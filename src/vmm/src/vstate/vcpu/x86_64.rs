@@ -12,6 +12,7 @@ use std::{fmt, result};
 use arch::x86_64::interrupts;
 use arch::x86_64::msr::SetMSRsError;
 use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegistersError};
+use arch::EntryPoint;
 use cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2s, VmSpec};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
@@ -21,7 +22,7 @@ use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
-use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
+use vm_memory::GuestMemoryMmap;
 
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
 use crate::vstate::vcpu::{VcpuConfig, VcpuEmulation};
@@ -244,13 +245,14 @@ impl KvmVcpu {
     /// # Arguments
     ///
     /// * `guest_mem` - The guest memory used by this microvm.
-    /// * `kernel_start_addr` - Offset from `guest_mem` at which the kernel starts.
+    /// * `kernel_entry_point` - Specifies the boot protocol and offset from `guest_mem` at which
+    ///   the kernel starts.
     /// * `vcpu_config` - The vCPU configuration.
     /// * `cpuid` - The capabilities exposed by this vCPU.
     pub fn configure(
         &mut self,
         guest_mem: &GuestMemoryMmap,
-        kernel_start_addr: GuestAddress,
+        kernel_entry_point: EntryPoint,
         vcpu_config: &VcpuConfig,
         mut cpuid: CpuId,
     ) -> std::result::Result<(), KvmVcpuConfigureError> {
@@ -315,9 +317,9 @@ impl KvmVcpu {
         // MSRs defined by the template`
 
         arch::x86_64::msr::set_msrs(&self.fd, &msr_boot_entries)?;
-        arch::x86_64::regs::setup_regs(&self.fd, kernel_start_addr.raw_value() as u64)?;
+        arch::x86_64::regs::setup_regs(&self.fd, kernel_entry_point)?;
         arch::x86_64::regs::setup_fpu(&self.fd)?;
-        arch::x86_64::regs::setup_sregs(guest_mem, &self.fd)?;
+        arch::x86_64::regs::setup_sregs(guest_mem, &self.fd, kernel_entry_point.protocol)?;
         arch::x86_64::interrupts::set_lint(&self.fd)?;
         Ok(())
     }
@@ -619,8 +621,10 @@ mod tests {
 
     use std::os::unix::io::AsRawFd;
 
+    use arch::BootProtocol;
     use cpuid::common::{get_vendor_id_from_host, VENDOR_ID_INTEL};
     use kvm_ioctls::Cap;
+    use vm_memory::GuestAddress;
 
     use super::*;
     use crate::vstate::vm::tests::setup_vm;
@@ -662,10 +666,15 @@ mod tests {
             cpu_template: CpuFeaturesTemplate::None,
         };
 
+        let entry_point = EntryPoint {
+            entry_addr: GuestAddress(0),
+            protocol: BootProtocol::LinuxBoot,
+        };
+
         assert!(vcpu
             .configure(
                 &vm_mem,
-                GuestAddress(0),
+                entry_point,
                 &vcpu_config,
                 vm.supported_cpuid().clone()
             )
@@ -675,7 +684,7 @@ mod tests {
         vcpu_config.cpu_template = CpuFeaturesTemplate::T2;
         let t2_res = vcpu.configure(
             &vm_mem,
-            GuestAddress(arch::get_kernel_start()),
+            entry_point,
             &vcpu_config,
             vm.supported_cpuid().clone(),
         );
@@ -684,7 +693,7 @@ mod tests {
         vcpu_config.cpu_template = CpuFeaturesTemplate::C3;
         let c3_res = vcpu.configure(
             &vm_mem,
-            GuestAddress(0),
+            entry_point,
             &vcpu_config,
             vm.supported_cpuid().clone(),
         );
@@ -693,7 +702,7 @@ mod tests {
         vcpu_config.cpu_template = CpuFeaturesTemplate::T2S;
         let t2s_res = vcpu.configure(
             &vm_mem,
-            GuestAddress(0),
+            entry_point,
             &vcpu_config,
             vm.supported_cpuid().clone(),
         );
