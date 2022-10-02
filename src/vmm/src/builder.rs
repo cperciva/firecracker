@@ -384,7 +384,7 @@ pub fn build_microvm_for_boot(
         &vmm,
         vcpus.as_mut(),
         vcpu_config,
-        entry_point.entry_addr,
+        entry_point,
         &initrd,
         boot_cmdline,
     )?;
@@ -848,7 +848,7 @@ pub fn configure_system_for_boot(
     vmm: &Vmm,
     vcpus: &mut [Vcpu],
     vcpu_config: VcpuConfig,
-    entry_addr: GuestAddress,
+    entry_point: EntryPoint,
     initrd: &Option<InitrdConfig>,
     boot_cmdline: LoaderKernelCmdline,
 ) -> std::result::Result<(), StartMicrovmError> {
@@ -859,7 +859,7 @@ pub fn configure_system_for_boot(
             vcpu.kvm_vcpu
                 .configure(
                     vmm.guest_memory(),
-                    entry_addr,
+                    entry_point,
                     &vcpu_config,
                     vmm.vm.supported_cpuid().clone(),
                 )
@@ -892,7 +892,7 @@ pub fn configure_system_for_boot(
     {
         for vcpu in vcpus.iter_mut() {
             vcpu.kvm_vcpu
-                .configure(vmm.guest_memory(), entry_addr)
+                .configure(vmm.guest_memory(), entry_point.entry_addr)
                 .map_err(Error::VcpuConfigure)
                 .map_err(Internal)?;
         }

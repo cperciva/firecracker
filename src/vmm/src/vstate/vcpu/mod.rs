@@ -660,6 +660,7 @@ mod tests {
     use std::fmt;
     use std::sync::{Arc, Barrier, Mutex};
 
+    use arch::{BootProtocol, EntryPoint};
     use linux_loader::loader::KernelLoader;
     use utils::errno;
     use utils::signal::validate_signal_num;
@@ -905,11 +906,14 @@ mod tests {
         let vcpu_exit_evt = vcpu.exit_evt.try_clone().unwrap();
 
         // Needs a kernel since we'll actually run this vcpu.
-        let entry_addr = load_good_kernel(&vm_mem);
+        let entry_point = EntryPoint {
+            entry_addr: load_good_kernel(&vm_mem),
+            protocol: BootProtocol::LinuxBoot,
+        };
 
         #[cfg(target_arch = "aarch64")]
         vcpu.kvm_vcpu
-            .configure(&vm_mem, entry_addr)
+            .configure(&vm_mem, entry_point)
             .expect("failed to configure vcpu");
         #[cfg(target_arch = "x86_64")]
         {
@@ -921,7 +925,7 @@ mod tests {
             vcpu.kvm_vcpu
                 .configure(
                     &vm_mem,
-                    entry_addr,
+                    entry_point,
                     &vcpu_config,
                     _vm.supported_cpuid().clone(),
                 )
