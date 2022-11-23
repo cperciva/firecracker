@@ -9,6 +9,7 @@ pub use kvm_bindings::{kvm_cpuid_entry2, CpuId};
 
 use crate::brand_string::{BrandString, Reg as BsReg};
 use crate::common::get_vendor_id_from_host;
+use crate::transformer::common::add_hypervisor_freqleaf;
 
 /// Structure containing the specifications of the VM
 pub struct VmSpec {
@@ -77,7 +78,8 @@ pub trait CpuidTransformer {
     /// Trait main function. It processes the cpuid and makes the desired transformations.
     /// The default logic can be overwritten if needed. For example see `AmdCpuidTransformer`.
     fn process_cpuid(&self, cpuid: &mut CpuId, vm_spec: &VmSpec) -> Result<(), Error> {
-        self.process_entries(cpuid, vm_spec)
+        self.process_entries(cpuid, vm_spec)?;
+        self.add_entries_fn(cpuid, vm_spec)
     }
 
     /// Iterates through all the cpuid entries and calls the associated transformer for each one.
@@ -96,6 +98,11 @@ pub trait CpuidTransformer {
     /// Gets the associated transformer for a cpuid entry
     fn entry_transformer_fn(&self, _entry: &mut kvm_cpuid_entry2) -> Option<EntryTransformerFn> {
         None
+    }
+
+    /// Adds new cpuid entries.
+    fn add_entries_fn(&self, cpuid: &mut CpuId, vm_spec: &VmSpec) -> Result<(), Error> {
+        add_hypervisor_freqleaf(cpuid, vm_spec)
     }
 }
 

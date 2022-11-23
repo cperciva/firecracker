@@ -69,6 +69,34 @@ pub fn update_brand_string_entry(
     Ok(())
 }
 
+pub fn update_hypervisor_max_freqleaf(
+    entry: &mut kvm_cpuid_entry2,
+    _vm_spec: &VmSpec,
+) -> Result<(), Error> {
+    // TODO: Should this be conditional on a user-specified option?
+    entry.eax = 0x40000010;
+
+    Ok(())
+}
+
+pub fn add_hypervisor_freqleaf(
+    cpuid: &mut CpuId,
+    _vm_spec: &VmSpec,
+) -> Result<(), Error> {
+    cpuid
+        .push(kvm_cpuid_entry2 {
+            function: 0x4000_0010,
+            index: 0,
+            flags: 0,
+            eax: 3000000, // TODO: Get the TSC we're setting for the guest
+            ebx: 1000000, // KVM always uses 1 GHz LAPIC clock
+            ecx: 0,
+            edx: 0,
+            padding: [0, 0, 0],
+        })
+        .map_err(Error::Fam)
+}
+
 pub fn update_cache_parameters_entry(
     entry: &mut kvm_cpuid_entry2,
     vm_spec: &VmSpec,
